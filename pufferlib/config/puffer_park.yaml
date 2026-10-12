@@ -1,0 +1,178 @@
+# CoPark reactive multi-agent parking (arXiv:2606.04149). Build the scene bank before training:
+#   python -m pufferlib.ocean.park.scenes --output pufferlib/resources/park/park_scenes.bin
+load_model_path: null
+load_id: null
+wandb: false
+wandb_project: pufferlib
+wandb_group: park
+# Doubles as the logger run id; relaunching with the same run_name and train.data_dir resumes the run.
+run_name: park_run
+neptune: false
+neptune_name: pufferai
+neptune_project: park
+tb: false
+tag: null
+package: ocean
+env_name: puffer_park
+policy_name: CoPark
+# CoPark is feed-forward.
+rnn_name: null
+vec:
+  # PufferEnv runs every C env in this process; use Multiprocessing with num_envs > 1 for more CPU workers.
+  backend: PufferEnv
+  num_envs: 1
+  num_workers: auto
+  batch_size: auto
+  zero_copy: true
+  seed: 42
+env:
+  # Agent slots per vec env; every C env owns max_agents_per_env slots and masks the ones its scene leaves empty.
+  # Size max_agents_per_env to the bank's largest scene (20 for the default bank) to keep masking low.
+  num_agents: 520
+  max_agents_per_env: 20
+  scene_bank_path: pufferlib/resources/park/park_scenes.bin
+  # Simulator step (s) and training horizon (steps), paper Table 5.
+  dt: 0.1
+  episode_steps: 400
+  # Controlled agents per scene; set 1 (with max_agents_per_env 1) for single-agent parking.
+  max_controlled_per_scene: 20
+  # Observation token budgets; K = 8 nearest partners.
+  obs_partner_slots: 8
+  obs_lane_slots: 48
+  obs_boundary_slots: 64
+  # Per-agent goal / collision weights (w_g, w_c) are sampled from these ranges; defaults apply when disabled.
+  reward_conditioning: true
+  goal_weight_min: 0.5
+  goal_weight_max: 2.0
+  collision_weight_min: 0.5
+  collision_weight_max: 3.0
+  goal_weight_default: 1.25
+  collision_weight_default: 1.75
+  # Sparse terminal rewards (scaled by w_g or w_c).
+  reward_success: 1.0
+  reward_collision: -1.0
+  reward_offroad: -1.0
+  reward_handoff: 0.2
+  # Dense safety: closing-threat weight beta_dyn, and a per-step penalty while static clearance < d0.
+  threat_penalty_weight: 0.10
+  reward_static_clearance: -0.02
+  # Navigation shaping: lane-graph progress, subgoal bonus, triangular speed-target reward.
+  reward_route_progress_per_m: 0.02
+  reward_subgoal: 0.02
+  reward_speed_target: 0.005
+  speed_target_mps: 2.5
+  speed_target_band_mps: 2.5
+  # Maneuver shaping: progress along the plan and threat-modulated imitation (alpha_imit, sigma_imit).
+  reward_plan_progress_per_m: 0.03
+  imitation_weight: 0.20
+  imitation_scale: 0.50
+  # Closed-loop refinement (beta_red, beta_hold, eta).
+  refine_gain: 0.25
+  refine_hold_bonus: 0.08
+  refine_tanh_scale_m: 0.10
+  # Threat signal (d_decay, tau_rho) and imitation trust weight (sigma_ct, beta_stat, d0).
+  threat_decay_m: 4.5
+  threat_squash_mps: 1.0
+  trust_cross_track_scale_m: 1.5
+  trust_clearance_slope_per_m: 20.0
+  trust_clearance_threshold_m: 0.35
+  # Success: within 0.8 m and 10 deg (modulo pi) at <= 0.35 m/s for 5 steps; refinement budget K_ref_max.
+  success_position_tolerance_m: 0.8
+  success_heading_tolerance_rad: 0.1745
+  success_speed_tolerance_mps: 0.35
+  success_hold_steps: 5
+  refine_budget_steps: 80
+  # Scene-density curriculum: per-env steps to ramp from sparse-only scenes to the tier weights; 0 disables.
+  curriculum_ramp_steps: 100000
+  tier_weight_sparse: 0.25
+  tier_weight_medium: 0.25
+  tier_weight_dense: 0.5
+  # First episode ends at a random step so envs do not reset in lockstep.
+  stagger_first_episode: true
+  # Env steps between metric reports.
+  report_interval: 32
+policy:
+  context_hidden_size: 128
+  entity_hidden_size: 64
+  backbone_hidden_size: 256
+  backbone_num_layers: 2
+  actor_hidden_size: 256
+  critic_hidden_size: 256
+  # Options: relu, tanh, gelu
+  activation: gelu
+  layer_norm: true
+  # false drops the Stanley prior and the residual bound (plain self-play PPO baseline).
+  use_prior: true
+  residual_logit_bound: 4.0
+  # Reliance range [alpha_min, alpha_max] and channel-wise prior release rates (kappa_acc >> kappa_steer).
+  reliance_min: 1.0
+  reliance_max: 4.0
+  release_rate_accel: 0.95
+  release_rate_steer: 0.40
+  prior_sigma_accel_mps2: 0.5
+  prior_sigma_steer_rad: 0.1
+train:
+  name: pufferai
+  project: park
+  seed: 42
+  final_model_name: final_model.pt
+  # Benchmarks, co-sim hooks and replay rendering during training are drive-only for now.
+  evaluation_interval_epochs: null
+  evaluation_benchmarks: null
+  cosim_debug_evals: false
+  torch_deterministic: false
+  cpu_offload: false
+  # cpu runs anywhere; use cuda (with precision bfloat16) on GPU machines.
+  device: cpu
+  optimizer: adam
+  anneal_lr: true
+  precision: float32
+  tf32: true
+  rollout_dtype: float32
+  total_timesteps: 50000000
+  learning_rate: 0.0003
+  gamma: 0.995
+  gae_lambda: 0.95
+  update_epochs: 2
+  clip_coef: 0.2
+  vf_coef: 0.5
+  vf_clip_coef: null
+  max_grad_norm: 0.5
+  separate_grad_clip: true
+  normalize_rewards: false
+  ent_coef: 0.005
+  ent_coef_anneal: false
+  ent_coef_final: 0.001
+  ent_coef_anneal_start_frac: 0.75
+  use_value_bootstrapping: true
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_eps: 1.0e-08
+  adam_weight_decay: 0.0
+  data_dir: experiments/park_train
+  resume_state_path: null
+  checkpoint_interval: 50
+  # batch_size = vec.num_envs * env.num_agents * bptt_horizon
+  batch_size: auto
+  min_batch_size: null
+  minibatch_size: 4096
+  max_minibatch_size: 4096
+  bptt_horizon: 32
+  compile: false
+  compile_mode: default
+  compile_fullgraph: false
+  vtrace_rho_clip: 1
+  vtrace_c_clip: 1
+  adv_sampling_prio_alpha: 0.85
+  adv_sampling_prio_beta0: 0.85
+  adv_filter_enabled: false
+  adv_filter_ewma_beta: 0.25
+  adv_filter_threshold_scale: 0.01
+  adv_filter_leak_fraction: 0.0
+  render: false
+  render_interval: 1000
+sweep:
+  method: Protein
+  metric: score
+  goal: maximize
+  downsample: 10

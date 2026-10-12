@@ -221,3 +221,6 @@ episode_metrics
 
 /obs
 profiles/
+
+# Generated CoPark scene banks (python -m pufferlib.ocean.park.scenes)
+pufferlib/resources/park/*.bin

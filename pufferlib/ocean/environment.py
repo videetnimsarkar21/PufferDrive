@@ -1,7 +1,7 @@
 import importlib
 import pufferlib
 
-MAKE_FUNCTIONS = {"drive": "Drive"}
+MAKE_FUNCTIONS = {"drive": "Drive", "park": "Park"}
 
 
 def env_creator(name="squared", *args, **kwargs):

@@ -153,7 +153,7 @@ class TorchBuildExt(cpp_extension.BuildExtension):
 c_extensions = []
 c_extension_paths = []
 if not NO_OCEAN:
-    c_extension_paths = ["pufferlib/ocean/drive"]
+    c_extension_paths = ["pufferlib/ocean/drive", "pufferlib/ocean/park"]
     c_extensions = [
         Extension(
             "pufferlib.ocean.drive.binding",
@@ -161,7 +161,14 @@ if not NO_OCEAN:
             include_dirs=[numpy.get_include()],
             extra_compile_args=extra_compile_args,
             extra_link_args=extra_link_args,
-        )
+        ),
+        Extension(
+            "pufferlib.ocean.park.binding",
+            sources=["pufferlib/ocean/park/binding.c"],
+            include_dirs=[numpy.get_include()],
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args,
+        ),
     ]
 
 

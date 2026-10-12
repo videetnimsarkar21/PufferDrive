@@ -50,6 +50,11 @@ from pufferlib.config_schema import (
     validate_puffer_drive_config,
     validate_puffer_drive_resources,
 )
+from pufferlib.ocean.park.config_schema import (
+    normalize_puffer_park_config,
+    validate_puffer_park_config,
+    validate_puffer_park_resources,
+)
 
 
 try:
@@ -86,6 +91,8 @@ HIDDEN_DASHBOARD_METRICS = {
     "total_distance_travelled_sum",
     "total_infraction_count",
 }
+
+PARK_ENV_NAME = "puffer_park"
 
 # Metric key prefixes for benchmark results. Training evaluation logs a step series;
 # a standalone eval writes run-level summaries, so the two never share a key.
@@ -1536,11 +1543,18 @@ def train(env_name, args=None, vecenv=None, policy=None, logger=None, early_stop
                 "policy/observation architecture instead of the checkpoint's."
             )
 
-    args = normalize_puffer_drive_config(args, "training")
-    validate_puffer_drive_config(args, "training")
-    if vecenv is None:
-        validate_puffer_drive_resources(args, "training")
-    training_evaluation_scheduled = drive_benchmark.validate_training_evaluation_config(args)
+    if env_name == PARK_ENV_NAME:
+        args = normalize_puffer_park_config(args, "training")
+        validate_puffer_park_config(args, "training")
+        if vecenv is None:
+            validate_puffer_park_resources(args, "training")
+        training_evaluation_scheduled = False
+    else:
+        args = normalize_puffer_drive_config(args, "training")
+        validate_puffer_drive_config(args, "training")
+        if vecenv is None:
+            validate_puffer_drive_resources(args, "training")
+        training_evaluation_scheduled = drive_benchmark.validate_training_evaluation_config(args)
 
     # Assume TorchRun DDP is used if LOCAL_RANK is set
     world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -2720,7 +2734,10 @@ def load_policy(args, vecenv, env_name=""):
     env_module = importlib.import_module(module_name)
 
     device = torch_device(args["train"]["device"])
-    policy_cls = getattr(env_module.torch, args["policy_name"])
+    policy_module = env_module.torch
+    if env_name == PARK_ENV_NAME:
+        policy_module = importlib.import_module("pufferlib.ocean.park.torch")
+    policy_cls = getattr(policy_module, args["policy_name"])
     policy = policy_cls(vecenv.driver_env, **args["policy"])
 
     rnn_name = args["rnn_name"]
@@ -2773,7 +2790,8 @@ def load_config(env_name, config_dir=None):
 
     args = defaultdict(dict, OmegaConf.to_container(cfg, resolve=True, throw_on_missing=True))
     args["train"]["use_rnn"] = args["rnn_name"] is not None
-    return defaultdict(dict, normalize_puffer_drive_config(args, "load"))
+    normalize_config = normalize_puffer_park_config if env_name == PARK_ENV_NAME else normalize_puffer_drive_config
+    return defaultdict(dict, normalize_config(args, "load"))
 
 
 def main():
